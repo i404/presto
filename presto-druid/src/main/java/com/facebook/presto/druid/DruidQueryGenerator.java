@@ -206,12 +206,23 @@ public class DruidQueryGenerator
         @Override
         public DruidQueryGeneratorContext visitFilter(FilterNode node, DruidQueryGeneratorContext context)
         {
+            PlanNode source = node;
+            boolean isHaving = false;
+            while (!source.getSources().isEmpty()) {
+                if (source instanceof AggregationNode) {
+                    isHaving = true;
+                    break;
+                }
+                source = source.getSources().get(0);
+            }
+
             context = node.getSource().accept(this, context);
             requireNonNull(context, "context is null");
             Map<VariableReferenceExpression, Selection> selections = context.getSelections();
             DruidFilterExpressionConverter druidFilterExpressionConverter = new DruidFilterExpressionConverter(typeManager, functionMetadataManager, standardFunctionResolution, session);
             String filter = node.getPredicate().accept(druidFilterExpressionConverter, selections::get).getDefinition();
-            return context.withFilter(filter).withOutputColumns(node.getOutputVariables());
+            DruidQueryGeneratorContext druidQueryGeneratorContext = isHaving ? context.withHaving(filter) : context.withFilter(filter);
+            return druidQueryGeneratorContext.withOutputColumns(node.getOutputVariables());
         }
 
         @Override

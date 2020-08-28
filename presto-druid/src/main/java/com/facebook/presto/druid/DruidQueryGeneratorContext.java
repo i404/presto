@@ -46,6 +46,7 @@ public class DruidQueryGeneratorContext
     private final Set<VariableReferenceExpression> variablesInAggregation;
     private final Optional<String> from;
     private final Optional<String> filter;
+    private final Optional<String> having;
     private final OptionalLong limit;
     private final int aggregations;
     private final Optional<PlanNodeId> tableScanNodeId;
@@ -60,6 +61,7 @@ public class DruidQueryGeneratorContext
                 .add("variablesInAggregation", variablesInAggregation)
                 .add("from", from)
                 .add("filter", filter)
+                .add("having", having)
                 .add("limit", limit)
                 .add("aggregations", aggregations)
                 .add("tableScanNodeId", tableScanNodeId)
@@ -80,6 +82,7 @@ public class DruidQueryGeneratorContext
                 selections,
                 Optional.ofNullable(from),
                 Optional.empty(),
+                Optional.empty(),
                 OptionalLong.empty(),
                 0,
                 new HashSet<>(),
@@ -92,6 +95,7 @@ public class DruidQueryGeneratorContext
             Map<VariableReferenceExpression, Selection> selections,
             Optional<String> from,
             Optional<String> filter,
+            Optional<String> having,
             OptionalLong limit,
             int aggregations,
             Set<VariableReferenceExpression> groupByColumns,
@@ -102,6 +106,7 @@ public class DruidQueryGeneratorContext
         this.selections = new LinkedHashMap<>(requireNonNull(selections, "selections can't be null"));
         this.from = requireNonNull(from, "source can't be null");
         this.filter = requireNonNull(filter, "filter is null");
+        this.having = requireNonNull(having, "having is null");
         this.limit = requireNonNull(limit, "limit is null");
         this.aggregations = aggregations;
         this.groupByColumns = new LinkedHashSet<>(requireNonNull(groupByColumns, "groupByColumns can't be null. It could be empty if not available"));
@@ -112,14 +117,33 @@ public class DruidQueryGeneratorContext
 
     public DruidQueryGeneratorContext withFilter(String filter)
     {
-        if (hasAggregation()) {
-            throw new PrestoException(DRUID_PUSHDOWN_UNSUPPORTED_EXPRESSION, "Druid does not support filter on top of AggregationNode.");
+        if (hasFilter()) {
+            filter = String.format("(%s) and (%s)", this.filter.get(), filter);
         }
-        checkState(!hasFilter(), "Druid doesn't support filters at multiple levels under AggregationNode");
+
         return new DruidQueryGeneratorContext(
                 selections,
                 from,
                 Optional.of(filter),
+                having,
+                limit,
+                aggregations,
+                groupByColumns,
+                variablesInAggregation,
+                hiddenColumnSet,
+                tableScanNodeId);
+    }
+
+    public DruidQueryGeneratorContext withHaving(String having)
+    {
+        if (hasHaving()) {
+            having = String.format("(%s) and (%s)", this.having.get(), having);
+        }
+        return new DruidQueryGeneratorContext(
+                selections,
+                from,
+                filter,
+                Optional.of(having),
                 limit,
                 aggregations,
                 groupByColumns,
@@ -134,6 +158,7 @@ public class DruidQueryGeneratorContext
                 newSelections,
                 from,
                 filter,
+                having,
                 limit,
                 aggregations,
                 groupByColumns,
@@ -152,6 +177,7 @@ public class DruidQueryGeneratorContext
                 selections,
                 from,
                 filter,
+                having,
                 OptionalLong.of(limit),
                 aggregations,
                 groupByColumns,
@@ -201,6 +227,7 @@ public class DruidQueryGeneratorContext
                 targetSelections,
                 from,
                 filter,
+                having,
                 limit,
                 newAggregations,
                 newGroupByColumns,
@@ -220,6 +247,7 @@ public class DruidQueryGeneratorContext
                 selections,
                 from,
                 filter,
+                having,
                 limit,
                 aggregations,
                 groupByColumns,
@@ -236,6 +264,11 @@ public class DruidQueryGeneratorContext
     private boolean hasFilter()
     {
         return filter.isPresent();
+    }
+
+    private boolean hasHaving()
+    {
+        return having.isPresent();
     }
 
     private boolean hasAggregation()
@@ -294,6 +327,11 @@ public class DruidQueryGeneratorContext
             pushdown = true;
         }
 
+        if (having.isPresent()) {
+            query += " HAVING " + having.get();
+            pushdown = true;
+        }
+
         if (hasAggregation()) {
             pushdown = true;
         }
@@ -329,6 +367,7 @@ public class DruidQueryGeneratorContext
                 newSelections,
                 from,
                 filter,
+                having,
                 limit,
                 aggregations,
                 groupByColumns,

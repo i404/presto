@@ -129,6 +129,11 @@ public class DruidFilterExpressionConverter
                 if (specialFormExpression.getForm() == SpecialFormExpression.Form.IN) {
                     return handleIn(specialFormExpression, false, context);
                 }
+                else if (specialFormExpression.getForm() == SpecialFormExpression.Form.IS_NULL) {
+                    return derived(format(
+                            "(%s is not null)",
+                            specialFormExpression.getArguments().get(0).accept(this, context).getDefinition()));
+                }
             }
         }
 
@@ -210,7 +215,6 @@ public class DruidFilterExpressionConverter
             case NULL_IF:
             case SWITCH:
             case WHEN:
-            case IS_NULL:
             case COALESCE:
             case DEREFERENCE:
             case ROW_CONSTRUCTOR:
@@ -218,6 +222,10 @@ public class DruidFilterExpressionConverter
                 throw new PrestoException(DRUID_PUSHDOWN_UNSUPPORTED_EXPRESSION, "Druid does not support special form: " + specialForm);
             case IN:
                 return handleIn(specialForm, true, context);
+            case IS_NULL:
+                return derived(format(
+                        "(%s is null)",
+                        specialForm.getArguments().get(0).accept(this, context).getDefinition()));
             case AND:
             case OR:
                 return derived(format(
